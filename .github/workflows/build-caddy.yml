@@ -1,0 +1,76 @@
+name: Docker Build and Push (Variable Version)
+
+on:
+  schedule:
+    - cron: '0 18 * * *'
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+# --- 定义全局变量 ---
+env:
+  TARGET_REPO: "lucaslorentz/caddy-docker-proxy"             # 监控的目标 GitHub 仓库
+  ACR_REGISTRY: "registry.cn-hangzhou.aliyuncs.com" # 注册中心地址
+  IMAGE_NAME: "venssy/caddy-proxy"    # 镜像命名空间与名称 
+# ------------------
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Get and Validate Release Tag
+        id: release_task
+        run: |
+          # 1. 获取 Release 数据
+          RELEASE_DATA=$(curl -s https://api.github.com/repos/${{ env.TARGET_REPO }}/releases/latest)
+          RAW_TAG=$(echo "$RELEASE_DATA" | jq -r .tag_name)
+          
+          # 2. 提取纯数字版本号
+          CLEAN_TAG=$(echo "$RAW_TAG" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "")
+          
+          # 3. 校验：如果 CLEAN_TAG 为空则报错退出
+          if [ -z "$CLEAN_TAG" ]; then
+            echo "Error: Could not extract a valid version tag from '$RAW_TAG'"
+            exit 1
+          fi
+          
+          echo "tag=$CLEAN_TAG" >> $GITHUB_OUTPUT
+          echo "Successfully validated tag: $CLEAN_TAG"
+
+          # 4. 定时任务增量判断逻辑
+          PUB_DATE=$(echo "$RELEASE_DATA" | jq -r .published_at)
+          PUB_TS=$(date -d "$PUB_DATE" +%s)
+          NOW_TS=$(date +%s)
+          DIFF=$(( (NOW_TS - PUB_TS) / 3600 ))
+
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            [ "$DIFF" -le 24 ] && echo "should_build=true" >> $GITHUB_OUTPUT || echo "should_build=false" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Login to ACR
+        if: steps.release_task.outputs.should_build == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and Push
+        if: steps.release_task.outputs.should_build == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.release_task.outputs.tag }}
+            ${{ env.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
