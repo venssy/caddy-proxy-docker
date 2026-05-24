@@ -18,7 +18,7 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
     --with github.com/mholt/caddy-webdav \
     --with github.com/lucaslorentz/caddy-docker-proxy/v2 \
     --with github.com/caddy-dns/alidns \
-    --with github.com/abiosoft/caddy-exec
+    --with github.com/venssy/caddy-exec
 
 RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=cache,target=/root/.cache/go-build/ \
