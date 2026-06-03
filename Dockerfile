@@ -29,7 +29,7 @@ FROM alpine:edge
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
     apk update && \
     apk upgrade && \
-    apk add --no-cache tzdata ca-certificates python3 py3-pip docker && \
+    apk add --no-cache tzdata ca-certificates python3 py3-pip docker bash && \
     update-ca-certificates && \
     rm -rf /var/cache/apk/*
 
